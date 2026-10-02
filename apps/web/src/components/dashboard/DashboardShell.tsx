@@ -240,10 +240,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           id="main"
           className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-14 md:pb-0 lg:overflow-hidden"
         >
-          <div className={isTrade ? "lg:h-full" : "hidden"}>
-          <div className="grid grid-cols-1 lg:h-full lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-1">
-            {/* Chart: full height down to the bottom of the screen on desktop */}
-            <div className="h-[46dvh] min-h-[300px] min-w-0 lg:h-full lg:min-h-0">
+          <div className={isTrade ? "h-full" : "hidden"}>
+          {/* Mobile: chart fills the leftover height, compact trade ticket sits right below it.
+              Desktop (lg+): chart on the left, full trade column on the right. */}
+          <div className="flex h-full flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-1">
+            {/* Chart: takes all remaining height on mobile, full height on desktop */}
+            <div className="relative min-h-[220px] min-w-0 flex-1 overflow-hidden lg:h-full lg:min-h-0 lg:flex-none">
               <TradingChart
                 market={market}
                 candles={feed.candles}
@@ -257,8 +259,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               />
             </div>
 
-            {/* Right column: trade ticket (Up/Down) on top, open trades + history below it */}
-            <div className="flex min-w-0 flex-col lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-white/[0.06] lg:bg-ink-900">
+            {/* Trade ticket (Up/Down). On desktop the open trades + history sit below it. */}
+            <div className="flex min-w-0 shrink-0 flex-col lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-white/[0.06] lg:bg-ink-900">
               <TradePanel
                 market={market}
                 durationSec={durationSec}
@@ -273,7 +275,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 showClock={showClock}
                 onToggleClock={() => setShowClock((v) => !v)}
               />
-              <TradeHistory trades={isReal ? [] : trades} markets={MARKET_MAP} isReal={isReal} />
+              {/* Hidden on mobile to keep the chart large; open trades are still drawn on the chart. */}
+              <div className="hidden lg:contents">
+                <TradeHistory trades={isReal ? [] : trades} markets={MARKET_MAP} isReal={isReal} />
+              </div>
             </div>
           </div>
           </div>
