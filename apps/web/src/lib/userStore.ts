@@ -1,12 +1,5 @@
-import { promises as fs } from "fs";
-import path from "path";
 import crypto from "crypto";
-
-/**
- * Minimal server-side "database": a JSON file on disk. Good enough for a prototype
- * account system — not meant for production scale or real financial data.
- */
-const DB_PATH = path.join(process.cwd(), "data", "users.json");
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 export type StoredUser = {
   email: string;
@@ -17,29 +10,52 @@ export type StoredUser = {
   createdAt: string;
 };
 
-async function readAll(): Promise<StoredUser[]> {
-  try {
-    const raw = await fs.readFile(DB_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
+let client: SupabaseClient | null = null;
 
-async function writeAll(users: StoredUser[]): Promise<void> {
-  await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, JSON.stringify(users, null, 2), "utf8");
+function db(): SupabaseClient {
+  if (client) return client;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  client = createClient(url, key, { auth: { persistSession: false } });
+  return client;
 }
 
 function hashPassword(password: string, salt: string): string {
   return crypto.scryptSync(password, salt, 64).toString("hex");
 }
 
+type Row = {
+  email: string;
+  country: string;
+  currency: string;
+  salt: string;
+  hash: string;
+  created_at: string;
+};
+
+function toUser(r: Row): StoredUser {
+  return {
+    email: r.email,
+    country: r.country,
+    currency: r.currency,
+    salt: r.salt,
+    hash: r.hash,
+    createdAt: r.created_at,
+  };
+}
+
 export async function findUser(email: string): Promise<StoredUser | null> {
-  const users = await readAll();
   const norm = email.trim().toLowerCase();
-  return users.find((u) => u.email.toLowerCase() === norm) ?? null;
+  const { data, error } = await db()
+    .from("users")
+    .select("email,country,currency,salt,hash,created_at")
+    .eq("email_norm", norm)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? toUser(data as Row) : null;
 }
 
 export async function createUser(input: {
@@ -48,22 +64,26 @@ export async function createUser(input: {
   country: string;
   currency: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const users = await readAll();
   const norm = input.email.trim().toLowerCase();
-  if (users.some((u) => u.email.toLowerCase() === norm)) {
-    return { ok: false, error: "An account with this email already exists." };
-  }
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = hashPassword(input.password, salt);
-  users.push({
+
+  const { error } = await db().from("users").insert({
     email: input.email.trim(),
+    email_norm: norm,
     country: input.country,
     currency: input.currency,
     salt,
     hash,
-    createdAt: new Date().toISOString(),
   });
-  await writeAll(users);
+
+  if (error) {
+    // 23505 = unique_violation (email already registered)
+    if (error.code === "23505") {
+      return { ok: false, error: "An account with this email already exists." };
+    }
+    throw error;
+  }
   return { ok: true };
 }
 

@@ -12,10 +12,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Email and password are required." }, { status: 400 });
   }
 
-  const result = await verifyUser(email, password);
-  if (!result.ok) {
-    return NextResponse.json(result, { status: 401 });
+  try {
+    const result = await verifyUser(email, password);
+    if (!result.ok) {
+      return NextResponse.json(result, { status: 401 });
+    }
+    const { user } = result;
+    return NextResponse.json({ ok: true, user: { email: user.email, country: user.country, currency: user.currency } });
+  } catch (err) {
+    console.error("login failed:", err);
+    return NextResponse.json(
+      { ok: false, error: "Something went wrong. Please try again." },
+      { status: 500 },
+    );
   }
-  const { user } = result;
-  return NextResponse.json({ ok: true, user: { email: user.email, country: user.country, currency: user.currency } });
 }
