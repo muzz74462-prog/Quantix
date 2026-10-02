@@ -25,8 +25,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, user: { email: email.trim(), country, currency } });
   } catch (err) {
     console.error("signup failed:", err);
+    // TEMPORARY DEBUG: remove after fixing. Exposes only error fields, never env values.
+    const e = err as {
+      name?: string;
+      message?: string;
+      code?: string;
+      details?: string;
+      hint?: string;
+    };
     return NextResponse.json(
-      { ok: false, error: "Something went wrong. Please try again." },
+      {
+        ok: false,
+        error: "Something went wrong. Please try again.",
+        debug: {
+          name: e?.name ?? null,
+          message: e?.message ?? String(err),
+          code: e?.code ?? null,
+          details: e?.details ?? null,
+          hint: e?.hint ?? null,
+        },
+      },
       { status: 500 },
     );
   }
