@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createUser } from "@/lib/userStore";
+import { USER_COOKIE, USER_SESSION_DAYS, createUserToken, lookupUserId } from "@/lib/userSession";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,25 @@ export async function POST(req: Request) {
     if (!result.ok) {
       return NextResponse.json(result, { status: 409 });
     }
-    return NextResponse.json({ ok: true, user: { email: email.trim(), country, currency } });
+    const res = NextResponse.json({ ok: true, user: { email: email.trim(), country, currency } });
+
+    // Additive: signed session cookie so the new user's balance can be served. Never breaks signup.
+    try {
+      const id = await lookupUserId(email);
+      const token = id ? createUserToken(id) : null;
+      if (token) {
+        res.cookies.set(USER_COOKIE, token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: USER_SESSION_DAYS * 86400,
+        });
+      }
+    } catch (e) {
+      console.error("session cookie skipped:", e);
+    }
+    return res;
   } catch (err) {
     console.error("signup failed:", err);
     return NextResponse.json(

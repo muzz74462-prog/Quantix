@@ -43,6 +43,34 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const isTrade = pathname === "/dashboard";
   const [user, setUser] = useState<DemoUser | null>(null);
   useEffect(() => setUser(loadDemoUser()), []);
+
+  // Live balance comes from the server (read-only). If there is no server session, it stays at the placeholder.
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/account/balance", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive && data?.ok && typeof data.balance === "number") {
+          setBalances((b) => (b.live === data.balance ? b : { ...b, live: data.balance }));
+        }
+      } catch {
+        /* offline: keep the current value */
+      }
+    };
+    void load();
+    window.addEventListener("focus", load);
+    // Pick up admin adjustments within seconds while the tab is open.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 15000);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", load);
+      window.clearInterval(timer);
+    };
+  }, []);
   // Markets / tabs
   const [tabIds, setTabIds] = useState<string[]>(DEFAULT_TABS);
   const [activeId, setActiveId] = useState<string>(DEFAULT_TABS[DEFAULT_TABS.length - 1]);
@@ -197,6 +225,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   const handleLogout = () => {
     clearDemoUser();
+    void fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     router.push("/signup");
   };
 
